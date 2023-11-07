@@ -1,10 +1,12 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python33
 
 from subprocess import check_output
 from re import findall, DOTALL, MULTILINE
 
-SHOW_NOTIFICATION = False
+SHOW_NOTIFICATION = True
 PLAY_SOUND_ALERT = True
+DEVICE = 'alsa_output.usb-GeneralPlus_USB_Audio_Device-00'
+DEVICE_ALIAS = 'HyperX Earbuds'
 
 # Index and Sink (current sink device index) for each application from "pacmd list-sink-inputs"
 inputs = findall(pattern=r'.*?index: (\d+).*?sink: (\d+)',
@@ -12,30 +14,27 @@ inputs = findall(pattern=r'.*?index: (\d+).*?sink: (\d+)',
                  flags=DOTALL | MULTILINE)
 # print('All inputs indexes:', inputs)
 
+device_names = findall(pattern=r'(name: ?[^\n]+)',
+                       string=check_output(['pacmd', 'list-sinks']).decode('utf-8'))
+device_names = [device_name.replace('name: <', '').replace('>', '') for device_name in device_names]
+# print('Device names:', device_names)
+# Handler for analog-stereo or iec958-stereo
+for device_name in device_names:
+    if DEVICE in device_name:
+        DEVICE = device_name
+
 # All available sink device indexes
 sinks = findall(pattern=r'index: (\d+)',
                 string=check_output(['pacmd', 'list-sinks']).decode(encoding='utf-8'))
 # print('All sinks indexes:', sinks)
 
-# Current sink device index
-current_sink = findall(pattern=r'\*.*?index: (\d+)',
-                       string=check_output(args=['pacmd', 'list-sinks']).decode(encoding='utf-8'))[0]
-# print('Current sink index:', current_sink)
+# Set default sink
+check_output(args=['pacmd', 'set-default-sink', DEVICE])
 
-# Reference index of current sink device index in all available sink device indexes
-idx = sinks.index(current_sink)
-# Handler for last index
-if idx == len(sinks) - 1:
-    target_sink = sinks[0]
-    check_output(args=['pacmd', 'set-default-sink', target_sink])
-else:
-    target_sink = sinks[idx + 1]
-    check_output(args=['pacmd', 'set-default-sink', target_sink])
-# print('Target sink index:', target_sink)
 # For each application
 for app in inputs:
     # Move sink input to target sink
-    check_output(args=['pacmd', 'move-sink-input', app[0], target_sink])
+    check_output(args=['pacmd', 'move-sink-input', app[0], DEVICE])
 
 # To notify the output change
 if PLAY_SOUND_ALERT:
@@ -44,5 +43,4 @@ if SHOW_NOTIFICATION:
     device_names = findall(pattern=r'(device.product.name = ?[^\n]+)',
                            string=check_output(['pacmd', 'list-sinks']).decode('utf-8'))
     device_names = [device_name.replace('device.product.name = ', '').replace('"', '') for device_name in device_names]
-    check_output(args=['notify-send', 'Saída de audio alterada para:',
-                       device_names[sinks.index(target_sink)]])
+    check_output(args=['notify-send', 'Saída de áudio alterada para:', DEVICE_ALIAS])
